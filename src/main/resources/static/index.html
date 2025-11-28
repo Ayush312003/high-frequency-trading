@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HFT Trading Engine</title>
+    <!-- WebSocket Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --card-bg: #161b22;
+            --text-color: #c9d1d9;
+            --accent-green: #2ea043;
+            --accent-yellow: #d29922;
+            --accent-red: #da3633;
+            --border-color: #30363d;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1100px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; color: #fff; }
+        .subtitle { font-size: 0.9rem; color: #8b949e; }
+
+        #connection-status {
+            font-size: 0.85rem;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-connected { background: rgba(46, 160, 67, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .status-disconnected { background: rgba(218, 54, 51, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
+
+        /* Table Styles */
+        .trade-table-container {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #21262d;
+            color: #8b949e;
+            text-align: left;
+            padding: 12px 16px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            font-variant-numeric: tabular-nums;
+        }
+
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+
+        /* Dynamic Content Styles */
+        .price-text { color: #e6edf3; font-weight: 600; font-family: 'Consolas', 'Monaco', monospace; }
+        .qty-text { color: #8b949e; font-family: 'Consolas', 'Monaco', monospace; }
+        .buyer-tag { color: var(--accent-green); }
+        .seller-tag { color: var(--accent-red); }
+        .timestamp { color: #8b949e; font-size: 0.85rem; }
+
+        /* Latency Column Styles */
+        .latency-cell {
+            font-family: 'Consolas', monospace;
+            font-weight: bold;
+            text-align: right;
+        }
+        .lat-fast { color: var(--accent-green); }
+        .lat-med { color: var(--accent-yellow); }
+        .lat-slow { color: var(--accent-red); }
+        .lat-invalid { color: #8b949e; opacity: 0.5; }
+
+        /* Flash Animation for new rows */
+        @keyframes flashNew {
+            0% { background-color: rgba(46, 160, 67, 0.2); }
+            100% { background-color: transparent; }
+        }
+        .new-trade-row {
+            animation: flashNew 1.5s ease-out;
+        }
+
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #8b949e;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>Market Stream: BTC/USD</h1>
+            <span class="subtitle">Live Matching Engine Feed via WebSockets</span>
+        </div>
+        <div id="connection-status" class="status-disconnected">Disconnected</div>
+    </header>
+
+    <div class="trade-table-container">
+        <table>
+            <thead>
+            <tr>
+                <th>Trade ID</th>
+                <th>Price ($)</th>
+                <th>Qty (BTC)</th>
+                <th>Buyer</th>
+                <th>Seller</th>
+                <th style="text-align: right">Latency (ms)</th>
+                <th>Executed At</th>
+            </tr>
+            </thead>
+            <tbody id="trades-body">
+            <!-- Rows injected via JS -->
+            </tbody>
+        </table>
+        <div id="empty-state" class="empty-state">Waiting for trades...</div>
+    </div>
+</div>
+
+<script>
+    // Point explicitly to Port 8080
+    const socketEndpoint = 'http://localhost:8080/ws';
+    const topic = '/topic/trades';
+
+    let stompClient = null;
+
+    function connect() {
+        const socket = new SockJS(socketEndpoint);
+        stompClient = Stomp.over(socket);
+        stompClient.debug = null; // Disable debug logs
+
+        stompClient.connect({}, function (frame) {
+            updateStatus(true);
+            console.log('Connected: ' + frame);
+
+            stompClient.subscribe(topic, function (message) {
+                const trade = JSON.parse(message.body);
+                addTradeToTable(trade);
+            });
+        }, function (error) {
+            console.error('Connection error:', error);
+            updateStatus(false);
+            // Auto-reconnect after 5 seconds
+            setTimeout(connect, 5000);
+        });
+    }
+
+    function updateStatus(isConnected) {
+        const el = document.getElementById('connection-status');
+        if (isConnected) {
+            el.innerText = '● Live';
+            el.className = 'status-connected';
+        } else {
+            el.innerText = '● Offline';
+            el.className = 'status-disconnected';
+        }
+    }
+
+    function addTradeToTable(trade) {
+        // Hide empty state
+        document.getElementById('empty-state').style.display = 'none';
+
+        const tbody = document.getElementById('trades-body');
+        const row = document.createElement('tr');
+        row.className = 'new-trade-row';
+
+        const date = new Date(trade.executionTimestamp);
+        const timeStr = date.toLocaleTimeString('en-US', { hour12: false }) + '.' +
+                      String(date.getMilliseconds()).padStart(3, '0');
+
+        // Logic to color-code the latency
+        let latClass = 'lat-fast'; // Green by default (< 20ms)
+        let latDisplay = trade.latency + ' ms';
+
+        // SAFETY CHECK: If latency is unreasonably large (e.g. > 1 hour), hide it.
+        // This happens if stale data with 0 timestamps exists in Redis.
+        if (trade.latency > 3600000) {
+            latClass = 'lat-invalid';
+            latDisplay = '—';
+        } else {
+            if (trade.latency > 100) latClass = 'lat-slow'; // Red if > 100ms
+            else if (trade.latency > 20) latClass = 'lat-med'; // Yellow if > 20ms
+        }
+
+        row.innerHTML = `
+            <td>#${trade.id}</td>
+            <td class="price-text">$${trade.price.toFixed(2)}</td>
+            <td class="qty-text">${trade.quantity.toFixed(4)}</td>
+            <td class="buyer-tag">${trade.buyerId}</td>
+            <td class="seller-tag">${trade.sellerId}</td>
+            <td class="latency-cell ${latClass}">${latDisplay}</td>
+            <td class="timestamp">${timeStr}</td>
+        `;
+
+        // Insert at top
+        tbody.insertBefore(row, tbody.firstChild);
+
+        // Limit table to 15 rows to prevent lag
+        if (tbody.children.length > 15) {
+            tbody.removeChild(tbody.lastChild);
+        }
+    }
+
+    // Initialize connection
+    connect();
+</script>
+</body>
+</html>
