@@ -1,5 +1,76 @@
 High-Frequency Trading (HFT) Engine
 
+⚙️ Setup & Installation
+
+Prerequisites
+
+Docker Desktop & Docker Compose
+
+Java JDK 17+
+
+Python 3 (for traffic simulation)
+
+1. Start Infrastructure
+
+Spin up the containers (Kafka, Zookeeper, Redis, MySQL).
+
+```
+docker-compose up -d
+```
+
+
+2. Start the Trading Engine
+
+Run the Spring Boot application.
+
+```
+./mvnw spring-boot:run
+```
+
+
+The engine will start on port 8080 and connect to the Docker containers.
+
+3. Access the Dashboard
+
+Open your browser to the local dashboard to view the real-time feed.
+ http://localhost:8080
+
+🚦 Usage & Testing
+
+Simulate High-Frequency Traffic
+
+Use the included Python script to flood the engine with random BUY/SELL orders.
+
+Install dependencies:
+
+```
+pip3 install requests
+```
+
+
+Run the Market Maker:
+
+```
+python src/main/resources/static/market_maker.py
+```
+
+
+You will see the dashboard light up with live trades, and the "Latency" column will calculate the end-to-end processing time (Tick-to-Trade).
+
+Manual API Usage
+
+You can also place manual orders via cURL:
+
+```
+curl -X POST http://localhost:8080/api/orders \
+-H "Content-Type: application/json" \
+-d '{"userId": "Whale_1", "type": "BUY", "price": 50000, "quantity": 5.0}'
+```
+
+
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 A low-latency, event-driven trading engine capable of processing limit orders with sub-millisecond internal latency. The system utilizes a hybrid persistence architecture, matching orders in memory via Redis while ensuring durable audit trails in MySQL.
 
 System Architecture
@@ -97,63 +168,6 @@ Frontend
 HTML5 / JS / STOMP
 
 Real-time dashboard using SockJS
-
-⚙️ Setup & Installation
-
-Prerequisites
-
-Docker Desktop & Docker Compose
-
-Java JDK 17+
-
-Python 3 (for traffic simulation)
-
-1. Start Infrastructure
-
-Spin up the containers (Kafka, Zookeeper, Redis, MySQL).
-
-docker-compose up -d
-
-
-2. Start the Trading Engine
-
-Run the Spring Boot application.
-
-./mvnw spring-boot:run
-
-
-The engine will start on port 8080 and connect to the Docker containers.
-
-3. Access the Dashboard
-
-Open your browser to the local dashboard to view the real-time feed.
- http://localhost:8080
-
-🚦 Usage & Testing
-
-Simulate High-Frequency Traffic
-
-Use the included Python script to flood the engine with random BUY/SELL orders.
-
-Install dependencies:
-
-pip3 install requests
-
-
-Run the Market Maker:
-
-python3 src/main/resources/static/market_maker.py
-
-
-You will see the dashboard light up with live trades, and the "Latency" column will calculate the end-to-end processing time (Tick-to-Trade).
-
-Manual API Usage
-
-You can also place manual orders via cURL:
-
-curl -X POST http://localhost:8080/api/orders \
--H "Content-Type: application/json" \
--d '{"userId": "Whale_1", "type": "BUY", "price": 50000, "quantity": 5.0}'
 
 
 Future Roadmap
