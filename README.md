@@ -57,6 +57,15 @@ python src/main/resources/static/market_maker.py
 
 You will see the dashboard light up with live trades, and the "Latency" column will calculate the end-to-end processing time (Tick-to-Trade).
 
+If you have to clear redis/kafka in docker then use these commands:
+```
+docker exec -it <container_name> redis-cli FLUSHALL
+```
+kafka
+```
+docker exec -it hft_kafka kafka-topics --bootstrap-server localhost:9092 --delete --topic orders.in
+```
+
 Manual API Usage
 
 You can also place manual orders via cURL:
